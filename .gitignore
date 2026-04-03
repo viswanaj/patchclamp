@@ -1,0 +1,15 @@
+.DS_Store
+.ipynb_checkpoints/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Large notebooks with embedded outputs — keep local only
+analysis-VC.ipynb
+
+# Scratch notebooks
+Untitled*.ipynb

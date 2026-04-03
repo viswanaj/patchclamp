@@ -14,7 +14,7 @@ setup(
     description="A comprehensive toolkit for analyzing patch clamp electrophysiology data",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/yourusername/patchclamp",
+    url="https://github.com/viswanaj/patchclamp",
     packages=find_packages(),
     classifiers=[
         "Development Status :: 4 - Beta",
