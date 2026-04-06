@@ -13,6 +13,7 @@ import os
 import tempfile
 import hashlib
 import streamlit as st
+import pandas as pd
 import pyabf
 import numpy as np
 import plotly.graph_objects as go
@@ -33,15 +34,60 @@ st.set_page_config(
 st.markdown(
     """
     <style>
-    .metadata-card {
-        background: #f8f9fb;
-        border: 1px solid #e0e4ea;
-        border-radius: 8px;
-        padding: 1rem 1.25rem;
-        margin-bottom: 0.75rem;
+    @import url('https://fonts.cdnfonts.com/css/helvetica-neue-55');
+
+    html, body, [class*="st-"], .stApp,
+    .stMarkdown, .stSelectbox, .stMultiSelect,
+    .stRadio, .stCheckbox, .stButton > button,
+    .stSlider, .stMetric, .stDataFrame,
+    input, textarea, select, label, p, span, div, h1, h2, h3, h4, h5, h6 {
+        font-family: 'Helvetica Neue', 'Helvetica', Arial, sans-serif !important;
     }
-    .metadata-card h4 { margin: 0 0 0.4rem 0; color: #334155; }
-    .metadata-card p  { margin: 0; color: #64748b; font-size: 0.92rem; }
+
+    .stApp {
+        background-color: #000000;
+    }
+
+    section[data-testid="stSidebar"] {
+        background-color: #0a0a0a;
+        border-right: 1px solid #ffffff;
+    }
+
+    section[data-testid="stSidebar"] .stMarkdown h4 {
+        color: #a1a1aa;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        font-size: 0.75rem;
+        margin-top: 0.5rem;
+    }
+
+    .stDataFrame {
+        border: 1px solid #ffffff !important;
+        border-radius: 6px;
+    }
+
+    div[data-testid="stMetric"] {
+        background: #111111;
+        border: 1px solid #ffffff;
+        border-radius: 8px;
+        padding: 0.75rem 1rem;
+    }
+    div[data-testid="stMetric"] label {
+        color: #71717a !important;
+    }
+    div[data-testid="stMetric"] [data-testid="stMetricValue"] {
+        color: #e4e4e7 !important;
+    }
+
+    h1, h2, h3 {
+        color: #f4f4f5 !important;
+    }
+
+    .stPlotlyChart {
+        border: 1px solid #ffffff;
+        border-radius: 8px;
+        overflow: hidden;
+    }
     </style>
     """,
     unsafe_allow_html=True,
@@ -50,11 +96,16 @@ st.markdown(
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 PLOTLY_LAYOUT = dict(
-    template="plotly_white",
+    template="plotly_dark",
+    paper_bgcolor="#000000",
+    plot_bgcolor="#0a0a0a",
+    font=dict(family="Helvetica Neue, Helvetica, Arial, sans-serif", color="#e4e4e7"),
     hovermode="x unified",
     dragmode="zoom",
     margin=dict(l=60, r=20, t=40, b=50),
     legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+    xaxis=dict(gridcolor="#1a1a1a", zerolinecolor="#222"),
+    yaxis=dict(gridcolor="#1a1a1a", zerolinecolor="#222"),
 )
 
 SWEEP_COLORS = [
@@ -199,6 +250,19 @@ uploaded_files = st.sidebar.file_uploader(
     help="Drag and drop one or more .abf files, or click to browse.",
 )
 
+max_points = st.sidebar.slider(
+    "Max points per trace",
+    min_value=1000,
+    max_value=50000,
+    value=8000,
+    step=1000,
+    help=(
+        "Controls how many points are displayed per sweep. "
+        "Lower = faster & smoother; higher = more detail. "
+        "Min-max decimation preserves spikes and valleys."
+    ),
+)
+
 if uploaded_files:
     file_map: dict[str, tuple[str, str]] = {}
     for uf in uploaded_files:
@@ -217,19 +281,55 @@ if file_map:
     chosen_name = st.sidebar.selectbox("Select file", names)
     selected_file, content_hash = file_map[chosen_name]
 
-st.sidebar.divider()
-max_points = st.sidebar.slider(
-    "Max points per trace",
-    min_value=1000,
-    max_value=50000,
-    value=8000,
-    step=1000,
-    help=(
-        "Controls how many points are displayed per sweep. "
-        "Lower = faster & smoother; higher = more detail. "
-        "Min-max decimation preserves spikes and valleys."
-    ),
-)
+# ── Sidebar: file details table ──────────────────────────────────────────────
+
+if selected_file is not None:
+    meta = load_abf_metadata(content_hash, selected_file)
+
+    st.sidebar.markdown("#### File Details")
+
+    details_df = pd.DataFrame(
+        {
+            "Property": [
+                "ABF ID",
+                "Protocol",
+                "Sweeps",
+                "Channels",
+                "Sample Rate",
+                "Sweep Length",
+                "Points / Sweep",
+                "Total Duration",
+            ],
+            "Value": [
+                meta["abf_id"],
+                meta["protocol"],
+                str(meta["sweep_count"]),
+                str(meta["channel_count"]),
+                f"{meta['sample_rate_hz'] / 1000:.1f} kHz",
+                f"{meta['sweep_length_sec'] * 1000:.1f} ms",
+                f"{meta['points_per_sweep']:,}",
+                f"{meta['total_duration_sec']:.2f} s ({meta['total_duration_sec'] / 60:.2f} min)",
+            ],
+        }
+    )
+    st.sidebar.dataframe(
+        details_df,
+        hide_index=True,
+        use_container_width=True,
+    )
+
+    if meta["channel_count"] > 0:
+        channel_df = pd.DataFrame(
+            [
+                {"Channel": i, "Name": ch["name"], "Units": ch["units"]}
+                for i, ch in enumerate(meta["channels"])
+            ]
+        )
+        st.sidebar.dataframe(
+            channel_df,
+            hide_index=True,
+            use_container_width=True,
+        )
 
 # ── Main area ────────────────────────────────────────────────────────────────
 
@@ -241,34 +341,7 @@ if selected_file is None:
     )
     st.stop()
 
-# Load metadata
-meta = load_abf_metadata(content_hash, selected_file)
-
 st.title(meta["filename"])
-
-# Metadata cards
-col1, col2, col3, col4, col5 = st.columns(5)
-col1.metric("Sweeps", meta["sweep_count"])
-col2.metric("Channels", meta["channel_count"])
-col3.metric("Sample Rate", f"{meta['sample_rate_hz'] / 1000:.1f} kHz")
-col4.metric("Sweep Length", f"{meta['sweep_length_sec'] * 1000:.1f} ms")
-col5.metric("Points / sweep", f"{meta['points_per_sweep']:,}")
-
-with st.expander("File details", expanded=False):
-    st.markdown(f"**Protocol:** {meta['protocol']}")
-    st.markdown(f"**ABF ID:** {meta['abf_id']}")
-    st.markdown(
-        f"**Total duration:** {meta['total_duration_sec']:.2f} s "
-        f"({meta['total_duration_sec'] / 60:.2f} min)"
-    )
-    for i, ch in enumerate(meta["channels"]):
-        st.markdown(f"**Channel {i}** — {ch['name']} ({ch['units']})")
-    if meta["points_per_sweep"] > max_points:
-        st.markdown(
-            f"*Displaying ~{max_points:,} of {meta['points_per_sweep']:,} "
-            f"points per trace (min-max decimation). "
-            f"Adjust in the sidebar for more detail.*"
-        )
 
 # ── Controls ─────────────────────────────────────────────────────────────────
 
