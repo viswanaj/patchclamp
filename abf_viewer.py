@@ -36,11 +36,14 @@ st.markdown(
     <style>
     @import url('https://fonts.cdnfonts.com/css/helvetica-neue-55');
 
-    html, body, [class*="st-"], .stApp,
+    html, body, .stApp,
     .stMarkdown, .stSelectbox, .stMultiSelect,
     .stRadio, .stCheckbox, .stButton > button,
     .stSlider, .stMetric, .stDataFrame,
-    input, textarea, select, label, p, span, div, h1, h2, h3, h4, h5, h6 {
+    input, textarea, select, label, p,
+    div:not([data-testid="stIcon"]),
+    span:not(.material-symbols-rounded):not(.material-icons),
+    h1, h2, h3, h4, h5, h6 {
         font-family: 'Helvetica Neue', 'Helvetica', Arial, sans-serif !important;
     }
 
@@ -250,6 +253,7 @@ uploaded_files = st.sidebar.file_uploader(
     type=["abf"],
     accept_multiple_files=True,
     help="Drag and drop one or more .abf files, or click to browse.",
+    label_visibility="collapsed",
 )
 
 max_points = st.sidebar.slider(
