@@ -119,7 +119,7 @@ def color_for_sweep(idx: int) -> str:
 
 
 def minmax_downsample(x: np.ndarray, y: np.ndarray, max_points: int) -> tuple[np.ndarray, np.ndarray]:
-    """Reduce a trace to *max_points* using min-max decimation.
+    """Reduce a trace to *max_points* using min-max decimation (fully vectorized).
 
     Each bin contributes its min and max value (in temporal order),
     so spikes and valleys are preserved even after heavy reduction.
@@ -130,18 +130,20 @@ def minmax_downsample(x: np.ndarray, y: np.ndarray, max_points: int) -> tuple[np
         return x, y
 
     n_bins = max_points // 2
-    bin_size = n / n_bins
+    # Trim to an even multiple of n_bins so reshape works cleanly
+    usable = n_bins * (n // n_bins)
+    y_trim = y[:usable].reshape(n_bins, -1)
 
+    bin_offsets = np.arange(n_bins) * (n // n_bins)
+    idx_min = bin_offsets + np.argmin(y_trim, axis=1)
+    idx_max = bin_offsets + np.argmax(y_trim, axis=1)
+
+    # Interleave min/max indices, keeping temporal order within each bin
+    lo = np.minimum(idx_min, idx_max)
+    hi = np.maximum(idx_min, idx_max)
     indices = np.empty(n_bins * 2, dtype=np.intp)
-    for i in range(n_bins):
-        start = int(i * bin_size)
-        end = int((i + 1) * bin_size)
-        segment = y[start:end]
-        idx_min = start + np.argmin(segment)
-        idx_max = start + np.argmax(segment)
-        lo, hi = sorted((idx_min, idx_max))
-        indices[2 * i] = lo
-        indices[2 * i + 1] = hi
+    indices[0::2] = lo
+    indices[1::2] = hi
 
     return x[indices], y[indices]
 
